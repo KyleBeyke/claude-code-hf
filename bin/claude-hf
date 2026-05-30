@@ -68,11 +68,14 @@ export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTIO
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="${CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY:-0}"
 
 CODEX_PARITY_PROMPT=$'Operate like API-backed Codex high for software engineering: use focused slices, inspect only needed local context, make scoped edits, avoid agents/subagents/background work unless explicitly requested, run targeted verification after edits, repair failures before finalizing, and keep final handoffs concise.'
+BACKUP_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
+CLAUDE_ARGS=()
 
-run_with_defaults() {
+build_claude_args() {
   local default_model="$1"
   local default_effort="$2"
   shift 2
+  CLAUDE_ARGS=("$@")
 
   local has_model=0
   local has_effort=0
@@ -80,7 +83,7 @@ run_with_defaults() {
   local has_permission_mode=0
 
   local arg
-  for arg in "$@"; do
+  for arg in "${CLAUDE_ARGS[@]}"; do
     case "$arg" in
       --model|-m|--model=*|-m*) has_model=1 ;;
       --effort|--effort=*) has_effort=1 ;;
@@ -90,19 +93,26 @@ run_with_defaults() {
   done
 
   if [[ "$has_append_prompt" -eq 0 ]]; then
-    set -- --append-system-prompt "$CODEX_PARITY_PROMPT" "$@"
+    CLAUDE_ARGS=(--append-system-prompt "$CODEX_PARITY_PROMPT" "${CLAUDE_ARGS[@]}")
   fi
   if [[ "$has_permission_mode" -eq 0 ]]; then
-    set -- --permission-mode dontAsk "$@"
+    CLAUDE_ARGS=(--permission-mode dontAsk "${CLAUDE_ARGS[@]}")
   fi
   if [[ "$has_effort" -eq 0 ]]; then
-    set -- --effort "$default_effort" "$@"
+    CLAUDE_ARGS=(--effort "$default_effort" "${CLAUDE_ARGS[@]}")
   fi
   if [[ "$has_model" -eq 0 ]]; then
-    set -- --model "$default_model" "$@"
+    CLAUDE_ARGS=(--model "$default_model" "${CLAUDE_ARGS[@]}")
   fi
+}
 
-  exec claude "$@"
+run_with_defaults() {
+  local default_model="$1"
+  local default_effort="$2"
+  shift 2
+  build_claude_args "$default_model" "$default_effort" "$@"
+
+  exec claude "${CLAUDE_ARGS[@]}"
 }
 
 contains_any() {
@@ -127,6 +137,54 @@ args_have_permission_mode() {
     esac
   done
   return 1
+}
+
+should_retry_review_with_backup() {
+  local stderr_file="$1"
+  local text
+  text="$(tr '[:upper:]' '[:lower:]' < "$stderr_file")"
+
+  contains_any "$text" \
+    "temporarily unavailable" \
+    "auto mode cannot determine the safety of bash right now" \
+    "service temporarily unavailable" \
+    "service unavailable" \
+    "http 503" \
+    "api returned an empty or malformed response" \
+    "socket connection was closed unexpectedly"
+}
+
+run_review_with_fallback() {
+  local primary_model="$1"
+  local primary_effort="$2"
+  shift 2
+  local original_args=("$@")
+  local stderr_file
+  stderr_file="$(mktemp -t claude-hf-review.XXXXXX)"
+
+  build_claude_args "$primary_model" "$primary_effort" "${original_args[@]}"
+
+  local exit_code=0
+  set +e
+  claude "${CLAUDE_ARGS[@]}" 2>"$stderr_file"
+  exit_code=$?
+  set -e
+
+  if [[ "$exit_code" -eq 0 ]]; then
+    rm -f "$stderr_file"
+    exit 0
+  fi
+
+  cat "$stderr_file" >&2
+
+  if should_retry_review_with_backup "$stderr_file"; then
+    rm -f "$stderr_file"
+    echo "claude-hf: primary review route appears unstable; retrying with backup model (${BACKUP_MODEL})." >&2
+    run_with_defaults "$BACKUP_MODEL" high "${original_args[@]}"
+  fi
+
+  rm -f "$stderr_file"
+  exit "$exit_code"
 }
 
 classify_auto_route() {
@@ -239,6 +297,10 @@ run_auto_route() {
     echo "claude-hf route=${ROUTE_NAME} model=${ROUTE_MODEL} effort=${ROUTE_EFFORT} reason=${ROUTE_REASON}" >&2
   fi
 
+  if [[ "$ROUTE_NAME" == "review" ]]; then
+    run_review_with_fallback "$ROUTE_MODEL" "$ROUTE_EFFORT" "$@"
+  fi
+
   if [[ -n "$ROUTE_PERMISSION_MODE" ]] && ! args_have_permission_mode "$@"; then
     run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" --permission-mode "$ROUTE_PERMISSION_MODE" "$@"
   else
@@ -271,7 +333,7 @@ case "${1:-}" in
     ;;
   review)
     shift
-    run_with_defaults opus high "$@"
+    run_review_with_fallback opus high "$@"
     ;;
   fast)
     shift
@@ -279,7 +341,7 @@ case "${1:-}" in
     ;;
   backup)
     shift
-    run_with_defaults "Qwen/Qwen3.5-397B-A17B:deepinfra" high "$@"
+    run_with_defaults "$BACKUP_MODEL" high "$@"
     ;;
   *)
     run_auto_route "$@"
