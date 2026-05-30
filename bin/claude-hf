@@ -72,13 +72,13 @@ run_with_defaults() {
   local default_effort="$2"
   shift 2
 
-  local args=("$@")
   local has_model=0
   local has_effort=0
   local has_append_prompt=0
   local has_permission_mode=0
 
-  for arg in "${args[@]}"; do
+  local arg
+  for arg in "$@"; do
     case "$arg" in
       --model|-m|--model=*|-m*) has_model=1 ;;
       --effort|--effort=*) has_effort=1 ;;
@@ -87,21 +87,20 @@ run_with_defaults() {
     esac
   done
 
-  local final_args=()
-  if [[ "$has_model" -eq 0 ]]; then
-    final_args+=(--model "$default_model")
-  fi
-  if [[ "$has_effort" -eq 0 ]]; then
-    final_args+=(--effort "$default_effort")
-  fi
   if [[ "$has_append_prompt" -eq 0 ]]; then
-    final_args+=(--append-system-prompt "$CODEX_PARITY_PROMPT")
+    set -- --append-system-prompt "$CODEX_PARITY_PROMPT" "$@"
   fi
   if [[ "$has_permission_mode" -eq 0 ]]; then
-    final_args+=(--permission-mode dontAsk)
+    set -- --permission-mode dontAsk "$@"
+  fi
+  if [[ "$has_effort" -eq 0 ]]; then
+    set -- --effort "$default_effort" "$@"
+  fi
+  if [[ "$has_model" -eq 0 ]]; then
+    set -- --model "$default_model" "$@"
   fi
 
-  exec claude "${final_args[@]}" "${args[@]}"
+  exec claude "$@"
 }
 
 contains_any() {
@@ -238,13 +237,8 @@ run_auto_route() {
     echo "claude-hf route=${ROUTE_NAME} model=${ROUTE_MODEL} effort=${ROUTE_EFFORT} reason=${ROUTE_REASON}" >&2
   fi
 
-  local route_args=()
   if [[ -n "$ROUTE_PERMISSION_MODE" ]] && ! args_have_permission_mode "$@"; then
-    route_args+=(--permission-mode "$ROUTE_PERMISSION_MODE")
-  fi
-
-  if [[ "${#route_args[@]}" -gt 0 ]]; then
-    run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "${route_args[@]}" "$@"
+    run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" --permission-mode "$ROUTE_PERMISSION_MODE" "$@"
   else
     run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "$@"
   fi
