@@ -70,6 +70,29 @@ export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="${CLAUDE_CODE_ENABLE_GATEWAY_
 CODEX_PARITY_PROMPT=$'Operate like API-backed Codex high for software engineering: use focused slices, inspect only needed local context, make scoped edits, avoid agents/subagents/background work unless explicitly requested, run targeted verification after edits, repair failures before finalizing, and keep final handoffs concise.'
 BACKUP_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
 CLAUDE_ARGS=()
+CLAUDE_BIN=""
+
+resolve_claude_bin() {
+  if [[ -n "${CLAUDE_BIN_OVERRIDE:-}" ]]; then
+    CLAUDE_BIN="${CLAUDE_BIN_OVERRIDE}"
+    return 0
+  fi
+
+  if [[ -x "${HOME}/.local/bin/claude" ]]; then
+    CLAUDE_BIN="${HOME}/.local/bin/claude"
+    return 0
+  fi
+
+  CLAUDE_BIN="$(command -v claude || true)"
+  if [[ -n "${CLAUDE_BIN}" ]]; then
+    return 0
+  fi
+
+  echo "claude-hf: unable to find 'claude' in PATH." >&2
+  exit 1
+}
+
+resolve_claude_bin
 
 build_claude_args() {
   local default_model="$1"
@@ -130,7 +153,7 @@ run_with_defaults() {
   shift 2
   build_claude_args "$default_model" "$default_effort" "$@"
 
-  exec claude "${CLAUDE_ARGS[@]}"
+  exec "${CLAUDE_BIN}" "${CLAUDE_ARGS[@]}"
 }
 
 contains_any() {
@@ -184,7 +207,7 @@ run_review_with_fallback() {
 
   local exit_code=0
   set +e
-  claude "${CLAUDE_ARGS[@]}" 2>"$stderr_file"
+  "${CLAUDE_BIN}" "${CLAUDE_ARGS[@]}" 2>"$stderr_file"
   exit_code=$?
   set -e
 
