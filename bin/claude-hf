@@ -83,26 +83,44 @@ build_claude_args() {
   local has_permission_mode=0
 
   local arg
-  for arg in "${CLAUDE_ARGS[@]}"; do
-    case "$arg" in
-      --model|-m|--model=*|-m*) has_model=1 ;;
-      --effort|--effort=*) has_effort=1 ;;
-      --append-system-prompt|--append-system-prompt=*) has_append_prompt=1 ;;
-      --permission-mode|--permission-mode=*) has_permission_mode=1 ;;
-    esac
-  done
+  if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+    for arg in "${CLAUDE_ARGS[@]}"; do
+      case "$arg" in
+        --model|-m|--model=*|-m*) has_model=1 ;;
+        --effort|--effort=*) has_effort=1 ;;
+        --append-system-prompt|--append-system-prompt=*) has_append_prompt=1 ;;
+        --permission-mode|--permission-mode=*) has_permission_mode=1 ;;
+      esac
+    done
+  fi
 
   if [[ "$has_append_prompt" -eq 0 ]]; then
-    CLAUDE_ARGS=(--append-system-prompt "$CODEX_PARITY_PROMPT" "${CLAUDE_ARGS[@]}")
+    if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+      CLAUDE_ARGS=(--append-system-prompt "$CODEX_PARITY_PROMPT" "${CLAUDE_ARGS[@]}")
+    else
+      CLAUDE_ARGS=(--append-system-prompt "$CODEX_PARITY_PROMPT")
+    fi
   fi
   if [[ "$has_permission_mode" -eq 0 ]]; then
-    CLAUDE_ARGS=(--permission-mode dontAsk "${CLAUDE_ARGS[@]}")
+    if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+      CLAUDE_ARGS=(--permission-mode dontAsk "${CLAUDE_ARGS[@]}")
+    else
+      CLAUDE_ARGS=(--permission-mode dontAsk)
+    fi
   fi
   if [[ "$has_effort" -eq 0 ]]; then
-    CLAUDE_ARGS=(--effort "$default_effort" "${CLAUDE_ARGS[@]}")
+    if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+      CLAUDE_ARGS=(--effort "$default_effort" "${CLAUDE_ARGS[@]}")
+    else
+      CLAUDE_ARGS=(--effort "$default_effort")
+    fi
   fi
   if [[ "$has_model" -eq 0 ]]; then
-    CLAUDE_ARGS=(--model "$default_model" "${CLAUDE_ARGS[@]}")
+    if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+      CLAUDE_ARGS=(--model "$default_model" "${CLAUDE_ARGS[@]}")
+    else
+      CLAUDE_ARGS=(--model "$default_model")
+    fi
   fi
 }
 
