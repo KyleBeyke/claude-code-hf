@@ -183,7 +183,18 @@ If your shell exports both, this avoids warning noise automatically.
 unknown variant `system`, expected `user` or `assistant`
 ```
 
-This is a provider compatibility mismatch for that slash command path. Use:
+This is a provider compatibility mismatch for that slash command path. `claude-hf`
+now auto-enables HF compatibility mode on Claude `2.1.158+` by adding `--bare`
+for HF router sessions.
+
+You can force behavior:
+
+```sh
+CLAUDE_HF_COMPAT_422_MODE=on claude-hf
+CLAUDE_HF_COMPAT_422_MODE=off claude-hf
+```
+
+For one-shot review:
 
 ```sh
 claude-hf review "Review this diff for regressions and missing tests."

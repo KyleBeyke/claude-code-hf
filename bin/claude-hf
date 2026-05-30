@@ -69,13 +69,30 @@ export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="${CLAUDE_CODE_ENABLE_GATEWAY_
 
 CODEX_PARITY_PROMPT=$'Operate like API-backed Codex high for software engineering: use focused slices, inspect only needed local context, make scoped edits, avoid agents/subagents/background work unless explicitly requested, run targeted verification after edits, repair failures before finalizing, and keep final handoffs concise.'
 BACKUP_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
+# Optional pin (e.g. CLAUDE_HF_PINNED_VERSION=2.1.149). Empty means "follow installed latest".
+CLAUDE_HF_PINNED_VERSION="${CLAUDE_HF_PINNED_VERSION:-}"
+# HF compatibility mode for Claude 2.1.158+ role-format regression:
+# - auto (default): enable for HF router when Claude version is 2.1.158 or newer
+# - on: force compatibility mode
+# - off: disable compatibility mode
+CLAUDE_HF_COMPAT_422_MODE="${CLAUDE_HF_COMPAT_422_MODE:-auto}"
 CLAUDE_ARGS=()
 CLAUDE_BIN=""
+CLAUDE_VERSION=""
+ENABLE_HF_422_COMPAT=0
 
 resolve_claude_bin() {
   if [[ -n "${CLAUDE_BIN_OVERRIDE:-}" ]]; then
     CLAUDE_BIN="${CLAUDE_BIN_OVERRIDE}"
     return 0
+  fi
+
+  if [[ -n "${CLAUDE_HF_PINNED_VERSION}" ]]; then
+    local pinned_bin="${HOME}/.local/share/claude/versions/${CLAUDE_HF_PINNED_VERSION}"
+    if [[ -x "${pinned_bin}" ]]; then
+      CLAUDE_BIN="${pinned_bin}"
+      return 0
+    fi
   fi
 
   if [[ -x "${HOME}/.local/bin/claude" ]]; then
@@ -92,7 +109,71 @@ resolve_claude_bin() {
   exit 1
 }
 
+resolve_claude_version() {
+  local version_output
+  version_output="$("${CLAUDE_BIN}" --version 2>/dev/null || true)"
+  CLAUDE_VERSION="$(printf '%s' "${version_output}" | sed -nE 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | head -n 1)"
+}
+
+version_ge() {
+  local a="$1"
+  local b="$2"
+  local IFS='.'
+  local av=()
+  local bv=()
+  av=($a)
+  bv=($b)
+
+  local i
+  for i in 0 1 2; do
+    local ai="${av[i]:-0}"
+    local bi="${bv[i]:-0}"
+    if (( ai > bi )); then
+      return 0
+    fi
+    if (( ai < bi )); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+resolve_hf_compat_mode() {
+  ENABLE_HF_422_COMPAT=0
+
+  case "${CLAUDE_HF_COMPAT_422_MODE}" in
+    off)
+      return 0
+      ;;
+    on)
+      ENABLE_HF_422_COMPAT=1
+      return 0
+      ;;
+    auto)
+      ;;
+    *)
+      echo "claude-hf: invalid CLAUDE_HF_COMPAT_422_MODE='${CLAUDE_HF_COMPAT_422_MODE}' (expected: auto|on|off)" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ "${ANTHROPIC_BASE_URL}" != *"router.huggingface.co"* ]]; then
+    return 0
+  fi
+
+  if [[ -z "${CLAUDE_VERSION}" ]]; then
+    return 0
+  fi
+
+  if version_ge "${CLAUDE_VERSION}" "2.1.158"; then
+    ENABLE_HF_422_COMPAT=1
+  fi
+}
+
 resolve_claude_bin
+resolve_claude_version
+resolve_hf_compat_mode
 
 build_claude_args() {
   local default_model="$1"
@@ -104,6 +185,7 @@ build_claude_args() {
   local has_effort=0
   local has_append_prompt=0
   local has_permission_mode=0
+  local has_bare=0
 
   local arg
   if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
@@ -113,6 +195,7 @@ build_claude_args() {
         --effort|--effort=*) has_effort=1 ;;
         --append-system-prompt|--append-system-prompt=*) has_append_prompt=1 ;;
         --permission-mode|--permission-mode=*) has_permission_mode=1 ;;
+        --bare) has_bare=1 ;;
       esac
     done
   fi
@@ -143,6 +226,15 @@ build_claude_args() {
       CLAUDE_ARGS=(--model "$default_model" "${CLAUDE_ARGS[@]}")
     else
       CLAUDE_ARGS=(--model "$default_model")
+    fi
+  fi
+
+  # HF router compatibility: avoid 2.1.158+ role-format 422 by running in bare mode.
+  if [[ "${ENABLE_HF_422_COMPAT}" -eq 1 ]] && [[ "$has_bare" -eq 0 ]]; then
+    if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
+      CLAUDE_ARGS=(--bare "${CLAUDE_ARGS[@]}")
+    else
+      CLAUDE_ARGS=(--bare)
     fi
   fi
 }
