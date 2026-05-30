@@ -166,6 +166,31 @@ Available profiles:
 - `github`: enables GitHub MCP, but only use it after configuring GitHub/Copilot
   MCP auth; otherwise it may report a failed MCP server
 
+## Troubleshooting
+
+Auth conflict warning:
+
+```text
+Both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_API_KEY are set
+```
+
+`claude-hf` now clears `ANTHROPIC_API_KEY` and uses `ANTHROPIC_AUTH_TOKEN` only.
+If your shell exports both, this avoids warning noise automatically.
+
+`/code-review` API 422 on HF router:
+
+```text
+unknown variant `system`, expected `user` or `assistant`
+```
+
+This is a provider compatibility mismatch for that slash command path. Use:
+
+```sh
+claude-hf review "Review this diff for regressions and missing tests."
+```
+
+or run a normal prompt-based review in the same session instead of `/code-review`.
+
 ## Secret Handling
 
 Token resolution is cross-platform and checks, in order:

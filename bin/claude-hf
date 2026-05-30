@@ -44,7 +44,9 @@ export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://router.huggingface.co}"
 
 export HF_TOKEN="${HF_TOKEN_FROM_ENV}"
 export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${HF_TOKEN_FROM_ENV}}"
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${HF_TOKEN_FROM_ENV}}"
+# Keep only one auth credential in-process to avoid Claude's token/key conflict warning.
+# If a caller exported ANTHROPIC_API_KEY, clear it so AUTH_TOKEN remains authoritative.
+unset ANTHROPIC_API_KEY
 
 # Claude Code model slots, mapped to Hugging Face Inference Providers models.
 export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-moonshotai/Kimi-K2.6:together}"
