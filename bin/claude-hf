@@ -49,26 +49,27 @@ export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${HF_TOKEN_FROM_ENV}}"
 unset ANTHROPIC_API_KEY
 
 # Claude Code model slots, mapped to Hugging Face Inference Providers models.
-export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-moonshotai/Kimi-K2.6:together}"
-export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="${ANTHROPIC_DEFAULT_OPUS_MODEL_NAME:-Kimi K2.6 via Together}"
-export ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION:-Planner and hard-reasoning slot for debugging, architecture, and final review.}"
+# Cost-optimized defaults: use cheaper routing/providers where possible.
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-moonshotai/Kimi-K2.6:cheapest}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="${ANTHROPIC_DEFAULT_OPUS_MODEL_NAME:-Kimi K2.6 (cheapest route)}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION:-Planner/hard-reasoning slot with cheapest-provider routing.}"
 
-export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-Qwen/Qwen3-Coder-480B-A35B-Instruct:together}"
-export ANTHROPIC_DEFAULT_SONNET_MODEL_NAME="${ANTHROPIC_DEFAULT_SONNET_MODEL_NAME:-Qwen3 Coder 480B A35B via Together}"
-export ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION:-Main coding executor for implementation work.}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-Qwen/Qwen3.6-35B-A3B:cheapest}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL_NAME="${ANTHROPIC_DEFAULT_SONNET_MODEL_NAME:-Qwen3.6 35B A3B (cheapest route)}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION:-Main coding executor tuned for lower cost.}"
 
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-Qwen/Qwen3.6-35B-A3B:deepinfra}"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME="${ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME:-Qwen3.6 35B A3B via DeepInfra}"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION:-Cheap fast/background slot for small edits, summaries, and low-risk checks.}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-Qwen/Qwen3.6-35B-A3B:cheapest}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME="${ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME:-Qwen3.6 35B A3B (cheapest route)}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION:-Cheap fast/background slot for low-risk checks.}"
 
-export CLAUDE_CODE_SUBAGENT_MODEL="${CLAUDE_CODE_SUBAGENT_MODEL:-Qwen/Qwen3.6-35B-A3B:deepinfra}"
-export ANTHROPIC_CUSTOM_MODEL_OPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION:-Qwen/Qwen3.5-397B-A17B:deepinfra}"
-export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="${ANTHROPIC_CUSTOM_MODEL_OPTION_NAME:-Qwen3.5 397B A17B via DeepInfra}"
-export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION:-Backup generalist when the primary coding route is slow or unavailable.}"
+export CLAUDE_CODE_SUBAGENT_MODEL="${CLAUDE_CODE_SUBAGENT_MODEL:-Qwen/Qwen3.6-35B-A3B:cheapest}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION:-Qwen/Qwen3-Coder-480B-A35B-Instruct:cheapest}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="${ANTHROPIC_CUSTOM_MODEL_OPTION_NAME:-Qwen3 Coder 480B A35B (cheapest route)}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION:-Stronger backup route, still using cheapest-provider routing.}"
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="${CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY:-0}"
 
 CODEX_PARITY_PROMPT=$'Operate like API-backed Codex high for software engineering: use focused slices, inspect only needed local context, make scoped edits, avoid agents/subagents/background work unless explicitly requested, run targeted verification after edits, repair failures before finalizing, and keep final handoffs concise.'
-BACKUP_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
+BACKUP_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct:cheapest"
 # Optional pin (e.g. CLAUDE_HF_PINNED_VERSION=2.1.149). Empty means "follow installed latest".
 CLAUDE_HF_PINNED_VERSION="${CLAUDE_HF_PINNED_VERSION:-}"
 # HF compatibility mode for Claude 2.1.158+ role-format regression:
@@ -342,7 +343,7 @@ classify_auto_route() {
 
   ROUTE_NAME="code"
   ROUTE_MODEL="sonnet"
-  ROUTE_EFFORT="high"
+  ROUTE_EFFORT="medium"
   ROUTE_PERMISSION_MODE=""
   ROUTE_REASON="default_coding_route"
 
@@ -373,8 +374,8 @@ classify_auto_route() {
 
   if contains_any "$text" "backup model" "use backup" "fallback model" "main model is slow" "provider failing"; then
     ROUTE_NAME="backup"
-    ROUTE_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
-    ROUTE_EFFORT="high"
+    ROUTE_MODEL="${BACKUP_MODEL}"
+    ROUTE_EFFORT="medium"
     ROUTE_REASON="explicit_backup_or_provider_issue"
     return
   fi
@@ -394,7 +395,7 @@ classify_auto_route() {
   if contains_any "$text" "${review_terms[@]}"; then
     ROUTE_NAME="review"
     ROUTE_MODEL="opus"
-    ROUTE_EFFORT="high"
+    ROUTE_EFFORT="medium"
     ROUTE_REASON="review_or_risk_detection"
     return
   fi
@@ -426,7 +427,7 @@ classify_auto_route() {
 
   ROUTE_NAME="code"
   ROUTE_MODEL="sonnet"
-  ROUTE_EFFORT="high"
+  ROUTE_EFFORT="medium"
   ROUTE_REASON="implementation_or_default"
 }
 
@@ -473,7 +474,7 @@ case "${1:-}" in
     ;;
   code)
     shift
-    run_with_defaults sonnet high "$@"
+    run_with_defaults sonnet medium "$@"
     ;;
   plan)
     shift
@@ -481,7 +482,7 @@ case "${1:-}" in
     ;;
   review)
     shift
-    run_review_with_fallback opus high "$@"
+    run_review_with_fallback opus medium "$@"
     ;;
   fast)
     shift
@@ -489,7 +490,7 @@ case "${1:-}" in
     ;;
   backup)
     shift
-    run_with_defaults "$BACKUP_MODEL" high "$@"
+    run_with_defaults "$BACKUP_MODEL" medium "$@"
     ;;
   *)
     run_auto_route "$@"

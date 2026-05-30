@@ -47,16 +47,16 @@ Default permission behavior:
 
 Claude Code's internal model slots are mapped to Hugging Face Inference Provider routes:
 
-- Planner / hard reasoning, `opus`: `moonshotai/Kimi-K2.6:together`
-- Main coding executor, `sonnet`: `Qwen/Qwen3-Coder-480B-A35B-Instruct:together`
-- Cheap fast/background, `haiku`: `Qwen/Qwen3.6-35B-A3B:deepinfra`
-- Backup generalist, custom option: `Qwen/Qwen3.5-397B-A17B:deepinfra`
-- Subagent slot: `Qwen/Qwen3.6-35B-A3B:deepinfra`
+- Planner / hard reasoning, `opus`: `moonshotai/Kimi-K2.6:cheapest`
+- Main coding executor, `sonnet`: `Qwen/Qwen3.6-35B-A3B:cheapest`
+- Cheap fast/background, `haiku`: `Qwen/Qwen3.6-35B-A3B:cheapest`
+- Strong backup route, custom option: `Qwen/Qwen3-Coder-480B-A35B-Instruct:cheapest`
+- Subagent slot: `Qwen/Qwen3.6-35B-A3B:cheapest`
 
 You can override any slot for a single run:
 
 ```sh
-ANTHROPIC_DEFAULT_SONNET_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra" ./bin/claude-hf code
+ANTHROPIC_DEFAULT_SONNET_MODEL="Qwen/Qwen3-Coder-480B-A35B-Instruct:cheapest" ./bin/claude-hf code
 ```
 
 ## Development Plugins
@@ -83,8 +83,8 @@ MCP, and context-expansion plugins are disabled by default.
 `./bin/claude-hf code` and `./bin/claude-hf codex-high` are the closest practical
 equivalents of Kyle's Codex `gpt-5.3-codex` high workflow:
 
-- `sonnet` model slot -> `Qwen/Qwen3-Coder-480B-A35B-Instruct:together`
-- `--effort high`
+- `sonnet` model slot -> `Qwen/Qwen3.6-35B-A3B:cheapest` by default
+- `codex-high` keeps `--effort high` for heavier passes
 - a short appended system prompt that enforces focused slices, scoped edits,
   local verification, no agents/subagents/background work, and concise handoff
 - global instructions in `~/.claude/CLAUDE.md` linked from this repo
@@ -101,13 +101,13 @@ tokens.
 
 Routing rules:
 
-- review / audit / appraise / risk prompts -> `review`: Kimi, high effort
+- review / audit / appraise / risk prompts -> `review`: Kimi, medium effort
 - plan-only / architecture / root-cause prompts -> `plan`: Kimi, high effort,
   plan permission mode when the prompt is clearly non-editing
-- implement / fix / repair / refactor / test prompts -> `code`: Qwen Coder
-  480B, high effort
+- implement / fix / repair / refactor / test prompts -> `code`: Qwen 35B,
+  medium effort
 - simple explanation / status / summary prompts -> `fast`: Qwen 35B, low effort
-- provider-failure or explicit backup wording -> `backup`: Qwen 397B, high effort
+- provider-failure or explicit backup wording -> `backup`: Qwen 480B, medium effort
 
 Preview the route without an API call:
 
