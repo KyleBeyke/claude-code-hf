@@ -76,12 +76,14 @@ run_with_defaults() {
   local has_model=0
   local has_effort=0
   local has_append_prompt=0
+  local has_permission_mode=0
 
   for arg in "${args[@]}"; do
     case "$arg" in
       --model|-m|--model=*|-m*) has_model=1 ;;
       --effort|--effort=*) has_effort=1 ;;
       --append-system-prompt|--append-system-prompt=*) has_append_prompt=1 ;;
+      --permission-mode|--permission-mode=*) has_permission_mode=1 ;;
     esac
   done
 
@@ -94,6 +96,9 @@ run_with_defaults() {
   fi
   if [[ "$has_append_prompt" -eq 0 ]]; then
     final_args+=(--append-system-prompt "$CODEX_PARITY_PROMPT")
+  fi
+  if [[ "$has_permission_mode" -eq 0 ]]; then
+    final_args+=(--permission-mode dontAsk)
   fi
 
   exec claude "${final_args[@]}" "${args[@]}"

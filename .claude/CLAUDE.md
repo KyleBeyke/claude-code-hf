@@ -12,6 +12,8 @@ Optimize for the same operating style Kyle uses with API-backed Codex
 - Prefer `rg`/`rg --files` for search and read the minimum files needed.
 - Do not spawn Explore agents, subagents, background agents, or agent teams
   unless Kyle explicitly asks in the current prompt.
+- Assume launcher sessions run with `--permission-mode dontAsk` unless the
+  command explicitly overrides it.
 - Do not use broad plugin workflows by default. Prefer local files, shell,
   TypeScript diagnostics, tests, and the repo's own scripts.
 - Preserve user changes. Never reset, checkout, or delete unrelated work.

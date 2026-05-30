@@ -37,6 +37,11 @@ Convenience launcher modes:
 ./bin/claude-hf backup    # backup generalist, high effort
 ```
 
+Default permission behavior:
+
+- `claude-hf` now defaults to `--permission-mode dontAsk`.
+- You can override it per run with `--permission-mode default` or `--permission-mode plan`.
+
 ## Model Slots
 
 Claude Code's internal model slots are mapped to Hugging Face Inference Provider routes:
