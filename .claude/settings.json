@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "apiKeyHelper": "if [ -n \"$HF_TOKEN\" ]; then printf '%s' \"$HF_TOKEN\"; elif command -v security >/dev/null 2>&1 && security find-generic-password -a \"$USER\" -s claude-hf-token -w >/dev/null 2>&1; then security find-generic-password -a \"$USER\" -s claude-hf-token -w; elif command -v secret-tool >/dev/null 2>&1 && secret-tool lookup service claude-hf-token user \"$USER\" >/dev/null 2>&1; then secret-tool lookup service claude-hf-token user \"$USER\"; elif command -v pass >/dev/null 2>&1 && pass show claude-hf-token >/dev/null 2>&1; then pass show claude-hf-token | head -n 1; else echo \"Missing HF token. Set HF_TOKEN or store claude-hf-token in Keychain/secret-tool/pass.\" >&2; exit 1; fi",
   "model": "sonnet",
   "availableModels": [
     "haiku",
