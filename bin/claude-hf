@@ -243,7 +243,11 @@ run_auto_route() {
     route_args+=(--permission-mode "$ROUTE_PERMISSION_MODE")
   fi
 
-  run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "${route_args[@]}" "$@"
+  if [[ "${#route_args[@]}" -gt 0 ]]; then
+    run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "${route_args[@]}" "$@"
+  else
+    run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "$@"
+  fi
 }
 
 case "${1:-}" in
