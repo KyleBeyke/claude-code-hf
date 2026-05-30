@@ -1,0 +1,259 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+HF_TOKEN_FROM_ENV="${HF_TOKEN:-}"
+
+if [[ -z "${HF_TOKEN_FROM_ENV}" ]] && command -v security >/dev/null 2>&1; then
+  if ! security find-generic-password -a "${USER}" -s claude-hf-token -w >/dev/null 2>&1; then
+    print -u2 "Missing HF_TOKEN. Set HF_TOKEN in your shell or store it in Keychain under service claude-hf-token."
+    exit 1
+  fi
+fi
+
+if [[ -z "${HF_TOKEN_FROM_ENV}" ]] && ! command -v security >/dev/null 2>&1; then
+  print -u2 "Missing HF_TOKEN. Set HF_TOKEN in your shell or store it in Keychain under service claude-hf-token."
+  exit 1
+fi
+
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://router.huggingface.co}"
+
+if [[ -n "${HF_TOKEN_FROM_ENV}" ]]; then
+  export HF_TOKEN="${HF_TOKEN_FROM_ENV}"
+  export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${HF_TOKEN_FROM_ENV}}"
+  export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${HF_TOKEN_FROM_ENV}}"
+fi
+
+# Claude Code model slots, mapped to Hugging Face Inference Providers models.
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-moonshotai/Kimi-K2.6:together}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL_NAME="${ANTHROPIC_DEFAULT_OPUS_MODEL_NAME:-Kimi K2.6 via Together}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION:-Planner and hard-reasoning slot for debugging, architecture, and final review.}"
+
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-Qwen/Qwen3-Coder-480B-A35B-Instruct:together}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL_NAME="${ANTHROPIC_DEFAULT_SONNET_MODEL_NAME:-Qwen3 Coder 480B A35B via Together}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION:-Main coding executor for implementation work.}"
+
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-Qwen/Qwen3.6-35B-A3B:deepinfra}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME="${ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME:-Qwen3.6 35B A3B via DeepInfra}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION="${ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION:-Cheap fast/background slot for small edits, summaries, and low-risk checks.}"
+
+export CLAUDE_CODE_SUBAGENT_MODEL="${CLAUDE_CODE_SUBAGENT_MODEL:-Qwen/Qwen3.6-35B-A3B:deepinfra}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION:-Qwen/Qwen3.5-397B-A17B:deepinfra}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="${ANTHROPIC_CUSTOM_MODEL_OPTION_NAME:-Qwen3.5 397B A17B via DeepInfra}"
+export ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION="${ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION:-Backup generalist when the primary coding route is slow or unavailable.}"
+export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="${CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY:-0}"
+
+CODEX_PARITY_PROMPT=$'Operate like API-backed Codex high for software engineering: use focused slices, inspect only needed local context, make scoped edits, avoid agents/subagents/background work unless explicitly requested, run targeted verification after edits, repair failures before finalizing, and keep final handoffs concise.'
+
+run_with_defaults() {
+  local default_model="$1"
+  local default_effort="$2"
+  shift 2
+
+  local args=("$@")
+  local has_model=0
+  local has_effort=0
+  local has_append_prompt=0
+
+  for arg in "${args[@]}"; do
+    case "$arg" in
+      --model|-m|--model=*|-m*) has_model=1 ;;
+      --effort|--effort=*) has_effort=1 ;;
+      --append-system-prompt|--append-system-prompt=*) has_append_prompt=1 ;;
+    esac
+  done
+
+  local final_args=()
+  if [[ "$has_model" -eq 0 ]]; then
+    final_args+=(--model "$default_model")
+  fi
+  if [[ "$has_effort" -eq 0 ]]; then
+    final_args+=(--effort "$default_effort")
+  fi
+  if [[ "$has_append_prompt" -eq 0 ]]; then
+    final_args+=(--append-system-prompt "$CODEX_PARITY_PROMPT")
+  fi
+
+  exec claude "${final_args[@]}" "${args[@]}"
+}
+
+contains_any() {
+  local text="$1"
+  shift
+
+  local needle
+  for needle in "$@"; do
+    if [[ "$text" == *"$needle"* ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+args_have_permission_mode() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --permission-mode|--permission-mode=*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+classify_auto_route() {
+  local raw text
+  raw="$(printf '%s ' "$@")"
+  text="${(L)raw}"
+
+  typeset -g ROUTE_NAME="code"
+  typeset -g ROUTE_MODEL="sonnet"
+  typeset -g ROUTE_EFFORT="high"
+  typeset -g ROUTE_PERMISSION_MODE=""
+  typeset -g ROUTE_REASON="default_coding_route"
+
+  local code_terms=(
+    "implement" "fix" "repair" "update" "modify" "edit" "change" "add "
+    "create" "wire" "refactor" "test" "typecheck" "build" "failing"
+    "failure" "bug" "broken" "patch" "migrate" "rename" "delete" "remove"
+  )
+  local review_terms=(
+    "review" "appraise" "audit" "critique" "check my work" "check claude"
+    "inspect the diff" "security review" "final review" "risk" "regression"
+    "find issues" "find bugs" "code review"
+  )
+  local plan_terms=(
+    "plan only" "implementation plan" "next steps" "design" "architecture"
+    "strategy" "approach" "root cause" "debug plan" "investigate" "scope"
+    "do not edit" "don't edit" "stop before editing"
+  )
+  local fast_terms=(
+    "what is" "what's" "how do i" "how can i" "explain" "summarize"
+    "summary" "status" "list" "show" "tell me" "which" "why does"
+    "help me understand" "no edits" "read only" "tiny" "typo"
+  )
+  local hard_terms=(
+    "hard" "deep" "complex" "large refactor" "architecture" "root cause"
+    "critical" "production" "security" "final review"
+  )
+
+  if contains_any "$text" "backup model" "use backup" "fallback model" "main model is slow" "provider failing"; then
+    ROUTE_NAME="backup"
+    ROUTE_MODEL="Qwen/Qwen3.5-397B-A17B:deepinfra"
+    ROUTE_EFFORT="high"
+    ROUTE_REASON="explicit_backup_or_provider_issue"
+    return
+  fi
+
+  if contains_any "$text" "plan only" "stop before editing" || {
+    contains_any "$text" "do not edit" "don't edit" "no edits" &&
+    contains_any "$text" "plan" "design" "next step" "next steps" "implementation" "scope";
+  }; then
+    ROUTE_NAME="plan"
+    ROUTE_MODEL="opus"
+    ROUTE_EFFORT="high"
+    ROUTE_PERMISSION_MODE="plan"
+    ROUTE_REASON="explicit_no_edit_planning"
+    return
+  fi
+
+  if contains_any "$text" "${review_terms[@]}"; then
+    ROUTE_NAME="review"
+    ROUTE_MODEL="opus"
+    ROUTE_EFFORT="high"
+    ROUTE_REASON="review_or_risk_detection"
+    return
+  fi
+
+  if contains_any "$text" "${plan_terms[@]}" && ! contains_any "$text" "${code_terms[@]}"; then
+    ROUTE_NAME="plan"
+    ROUTE_MODEL="opus"
+    ROUTE_EFFORT="high"
+    ROUTE_PERMISSION_MODE="plan"
+    ROUTE_REASON="planning_without_edit_intent"
+    return
+  fi
+
+  if contains_any "$text" "${fast_terms[@]}" && ! contains_any "$text" "${code_terms[@]}" && ! contains_any "$text" "${hard_terms[@]}"; then
+    ROUTE_NAME="fast"
+    ROUTE_MODEL="haiku"
+    ROUTE_EFFORT="low"
+    ROUTE_REASON="cheap_readonly_or_simple_task"
+    return
+  fi
+
+  if contains_any "$text" "${plan_terms[@]}" || contains_any "$text" "${hard_terms[@]}"; then
+    ROUTE_NAME="plan"
+    ROUTE_MODEL="opus"
+    ROUTE_EFFORT="high"
+    ROUTE_REASON="hard_reasoning_or_planning_context"
+    return
+  fi
+
+  ROUTE_NAME="code"
+  ROUTE_MODEL="sonnet"
+  ROUTE_EFFORT="high"
+  ROUTE_REASON="implementation_or_default"
+}
+
+print_route() {
+  print "route=${ROUTE_NAME}"
+  print "model=${ROUTE_MODEL}"
+  print "effort=${ROUTE_EFFORT}"
+  print "permission_mode=${ROUTE_PERMISSION_MODE:-default}"
+  print "reason=${ROUTE_REASON}"
+}
+
+run_auto_route() {
+  classify_auto_route "$@"
+
+  if [[ "${CLAUDE_HF_SHOW_ROUTE:-0}" == "1" ]]; then
+    print -u2 "claude-hf route=${ROUTE_NAME} model=${ROUTE_MODEL} effort=${ROUTE_EFFORT} reason=${ROUTE_REASON}"
+  fi
+
+  local route_args=()
+  if [[ -n "$ROUTE_PERMISSION_MODE" ]] && ! args_have_permission_mode "$@"; then
+    route_args+=(--permission-mode "$ROUTE_PERMISSION_MODE")
+  fi
+
+  run_with_defaults "$ROUTE_MODEL" "$ROUTE_EFFORT" "${route_args[@]}" "$@"
+}
+
+case "${1:-}" in
+  auto)
+    shift
+    run_auto_route "$@"
+    ;;
+  route|classify)
+    shift
+    classify_auto_route "$@"
+    print_route
+    exit 0
+    ;;
+  codex|codex-high)
+    shift
+    run_with_defaults sonnet high "$@"
+    ;;
+  code)
+    shift
+    run_with_defaults sonnet high "$@"
+    ;;
+  plan)
+    shift
+    run_with_defaults opus high --permission-mode plan "$@"
+    ;;
+  review)
+    shift
+    run_with_defaults opus high "$@"
+    ;;
+  fast)
+    shift
+    run_with_defaults haiku low "$@"
+    ;;
+  backup)
+    shift
+    run_with_defaults "Qwen/Qwen3.5-397B-A17B:deepinfra" high "$@"
+    ;;
+  *)
+    run_auto_route "$@"
+    ;;
+esac

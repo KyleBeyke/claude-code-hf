@@ -1,0 +1,43 @@
+# Local/runtime files
+.DS_Store
+node_modules/
+tmp/
+*.log
+*.pid
+*.tmp
+
+# Environment and secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.kdbx
+*.ovpn
+*.age
+*.gpg
+*.asc
+*.secrets
+*.secret
+*.credentials
+**/secrets/**
+**/.secrets/**
+**/credentials/**
+
+# Local auth/session artifacts
+.claude/auth.json
+.claude/**/*.local.json
+.claude/**/*.local.md
+.claude/cache/
+.claude/sessions/
+.claude/tasks/
+
+# Local backups created by installer or editor
+*.bak
+*.bak-*
+*.orig
+*.rej

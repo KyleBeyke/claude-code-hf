@@ -1,0 +1,24 @@
+{
+  "name": "claude-code-hf-launcher",
+  "private": true,
+  "scripts": {
+    "install:global": "node scripts/install-global.mjs",
+    "claude:hf": "./bin/claude-hf",
+    "claude:codex-high": "./bin/claude-hf codex-high",
+    "claude:code": "./bin/claude-hf code",
+    "claude:plan": "./bin/claude-hf plan",
+    "claude:review": "./bin/claude-hf review",
+    "claude:fast": "./bin/claude-hf fast",
+    "claude:backup": "./bin/claude-hf backup",
+    "claude:route": "./bin/claude-hf route",
+    "claude:route:check": "./bin/claude-hf route \"What is this error?\" && ./bin/claude-hf route \"Plan only. Do not edit files. Design the next step.\" && ./bin/claude-hf route \"Implement the focused fix and run tests.\" && ./bin/claude-hf route \"Review this diff for bugs.\"",
+    "claude:tools": "node scripts/tool-session.mjs",
+    "claude:with": "node scripts/tool-session.mjs run",
+    "claude:status": "claude --version && node scripts/status.mjs",
+    "claude:check": "./bin/claude-hf fast -p --tools \"\" --no-session-persistence \"Reply with exactly: HF development rig ready\"",
+    "claude:mcp": "claude mcp list",
+    "claude:plugins": "./bin/claude-hf plugin list",
+    "claude:doctor": "./bin/claude-hf doctor",
+    "claude:marketplaces": "./bin/claude-hf plugin marketplace list"
+  }
+}
