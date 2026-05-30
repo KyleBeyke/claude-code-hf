@@ -33,6 +33,17 @@ function linkWithBackup(source, target) {
   console.log(`Linked ${target} -> ${source}`);
 }
 
+function tryLinkWithBackup(source, target) {
+  try {
+    linkWithBackup(source, target);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`Skipped ${target}: ${message}`);
+    return false;
+  }
+}
+
 linkWithBackup(
   join(root, '.claude', 'settings.json'),
   join(process.env.HOME, '.claude', 'settings.json')
@@ -43,7 +54,21 @@ linkWithBackup(
   join(process.env.HOME, '.claude', 'CLAUDE.md')
 );
 
-const binTarget = '/opt/homebrew/bin/claude-hf';
-if (existsSync(dirname(binTarget))) {
-  linkWithBackup(join(root, 'bin', 'claude-hf'), binTarget);
+const launcherSource = join(root, 'bin', 'claude-hf');
+const binCandidates = [
+  '/opt/homebrew/bin/claude-hf', // macOS Homebrew (Apple Silicon)
+  '/usr/local/bin/claude-hf', // Linux/macOS fallback
+  join(process.env.HOME, '.local', 'bin', 'claude-hf') // user-writable fallback
+];
+
+let linkedLauncher = false;
+for (const candidate of binCandidates) {
+  if (tryLinkWithBackup(launcherSource, candidate)) {
+    linkedLauncher = true;
+    break;
+  }
+}
+
+if (!linkedLauncher) {
+  throw new Error('Failed to link claude-hf launcher into PATH candidates.');
 }

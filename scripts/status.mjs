@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const settingsPath = join(process.env.HOME, '.claude', 'settings.json');
 const globalInstructionsPath = join(process.env.HOME, '.claude', 'CLAUDE.md');
@@ -36,3 +37,8 @@ if (!existsSync(globalInstructionsPath)) {
     process.exitCode = 1;
   }
 }
+
+const whichLauncher = spawnSync('sh', ['-lc', 'command -v claude-hf || true'], {
+  encoding: 'utf8'
+}).stdout.trim();
+console.log(`launcher_in_path: ${whichLauncher || 'missing'}`);

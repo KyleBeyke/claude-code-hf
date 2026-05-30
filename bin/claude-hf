@@ -1,27 +1,50 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 set -euo pipefail
 
-HF_TOKEN_FROM_ENV="${HF_TOKEN:-}"
-
-if [[ -z "${HF_TOKEN_FROM_ENV}" ]] && command -v security >/dev/null 2>&1; then
-  if ! security find-generic-password -a "${USER}" -s claude-hf-token -w >/dev/null 2>&1; then
-    print -u2 "Missing HF_TOKEN. Set HF_TOKEN in your shell or store it in Keychain under service claude-hf-token."
-    exit 1
+resolve_hf_token() {
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    printf '%s' "${HF_TOKEN}"
+    return 0
   fi
-fi
 
-if [[ -z "${HF_TOKEN_FROM_ENV}" ]] && ! command -v security >/dev/null 2>&1; then
-  print -u2 "Missing HF_TOKEN. Set HF_TOKEN in your shell or store it in Keychain under service claude-hf-token."
+  # macOS Keychain
+  if command -v security >/dev/null 2>&1; then
+    if security find-generic-password -a "${USER}" -s claude-hf-token -w >/dev/null 2>&1; then
+      security find-generic-password -a "${USER}" -s claude-hf-token -w
+      return 0
+    fi
+  fi
+
+  # Linux Secret Service
+  if command -v secret-tool >/dev/null 2>&1; then
+    if secret-tool lookup service claude-hf-token user "${USER}" >/dev/null 2>&1; then
+      secret-tool lookup service claude-hf-token user "${USER}"
+      return 0
+    fi
+  fi
+
+  # pass (password-store)
+  if command -v pass >/dev/null 2>&1; then
+    if pass show claude-hf-token >/dev/null 2>&1; then
+      pass show claude-hf-token | head -n 1
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+HF_TOKEN_FROM_ENV="$(resolve_hf_token || true)"
+if [[ -z "${HF_TOKEN_FROM_ENV}" ]]; then
+  echo "Missing HF token. Set HF_TOKEN, or store 'claude-hf-token' in Keychain (macOS), secret-tool, or pass (Linux)." >&2
   exit 1
 fi
 
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://router.huggingface.co}"
 
-if [[ -n "${HF_TOKEN_FROM_ENV}" ]]; then
-  export HF_TOKEN="${HF_TOKEN_FROM_ENV}"
-  export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${HF_TOKEN_FROM_ENV}}"
-  export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${HF_TOKEN_FROM_ENV}}"
-fi
+export HF_TOKEN="${HF_TOKEN_FROM_ENV}"
+export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${HF_TOKEN_FROM_ENV}}"
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${HF_TOKEN_FROM_ENV}}"
 
 # Claude Code model slots, mapped to Hugging Face Inference Providers models.
 export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-moonshotai/Kimi-K2.6:together}"
@@ -103,13 +126,13 @@ args_have_permission_mode() {
 classify_auto_route() {
   local raw text
   raw="$(printf '%s ' "$@")"
-  text="${(L)raw}"
+  text="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
 
-  typeset -g ROUTE_NAME="code"
-  typeset -g ROUTE_MODEL="sonnet"
-  typeset -g ROUTE_EFFORT="high"
-  typeset -g ROUTE_PERMISSION_MODE=""
-  typeset -g ROUTE_REASON="default_coding_route"
+  ROUTE_NAME="code"
+  ROUTE_MODEL="sonnet"
+  ROUTE_EFFORT="high"
+  ROUTE_PERMISSION_MODE=""
+  ROUTE_REASON="default_coding_route"
 
   local code_terms=(
     "implement" "fix" "repair" "update" "modify" "edit" "change" "add "
@@ -144,10 +167,10 @@ classify_auto_route() {
     return
   fi
 
-  if contains_any "$text" "plan only" "stop before editing" || {
+  if contains_any "$text" "plan only" "stop before editing" || (
     contains_any "$text" "do not edit" "don't edit" "no edits" &&
-    contains_any "$text" "plan" "design" "next step" "next steps" "implementation" "scope";
-  }; then
+    contains_any "$text" "plan" "design" "next step" "next steps" "implementation" "scope"
+  ); then
     ROUTE_NAME="plan"
     ROUTE_MODEL="opus"
     ROUTE_EFFORT="high"
@@ -196,18 +219,18 @@ classify_auto_route() {
 }
 
 print_route() {
-  print "route=${ROUTE_NAME}"
-  print "model=${ROUTE_MODEL}"
-  print "effort=${ROUTE_EFFORT}"
-  print "permission_mode=${ROUTE_PERMISSION_MODE:-default}"
-  print "reason=${ROUTE_REASON}"
+  echo "route=${ROUTE_NAME}"
+  echo "model=${ROUTE_MODEL}"
+  echo "effort=${ROUTE_EFFORT}"
+  echo "permission_mode=${ROUTE_PERMISSION_MODE:-default}"
+  echo "reason=${ROUTE_REASON}"
 }
 
 run_auto_route() {
   classify_auto_route "$@"
 
   if [[ "${CLAUDE_HF_SHOW_ROUTE:-0}" == "1" ]]; then
-    print -u2 "claude-hf route=${ROUTE_NAME} model=${ROUTE_MODEL} effort=${ROUTE_EFFORT} reason=${ROUTE_REASON}"
+    echo "claude-hf route=${ROUTE_NAME} model=${ROUTE_MODEL} effort=${ROUTE_EFFORT} reason=${ROUTE_REASON}" >&2
   fi
 
   local route_args=()

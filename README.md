@@ -163,7 +163,15 @@ Available profiles:
 
 ## Secret Handling
 
-The Hugging Face token is stored in the macOS Keychain under service `claude-hf-token`. Global Claude Code settings use `apiKeyHelper` to retrieve it at runtime. The launcher also respects an existing `HF_TOKEN` environment variable.
+Token resolution is cross-platform and checks, in order:
+
+- `HF_TOKEN` environment variable
+- macOS Keychain service `claude-hf-token`
+- Linux Secret Service via `secret-tool` (`service=claude-hf-token`, `user=$USER`)
+- Linux `pass` entry `claude-hf-token`
+
+Global Claude settings use `apiKeyHelper` with the same resolution order.
+The launcher (`claude-hf`) also applies this logic.
 
 The setup deliberately avoids plugins that call non-HF model providers such as OpenRouter, Gemini, Codex, or proprietary AI review services.
 
@@ -190,4 +198,24 @@ npm run claude:status
 npm run claude:route:check
 npm run claude:tools -- profiles
 npm run claude:check
+```
+
+## Linux / WSL Deploy
+
+```sh
+git clone https://github.com/KyleBeyke/claude-code-hf.git
+cd claude-code-hf
+npm install
+export HF_TOKEN=hf_xxx
+npm run install:global
+npm run claude:status
+claude-hf
+```
+
+If system bin paths are not writable, installer falls back to `~/.local/bin/claude-hf`.
+Ensure `~/.local/bin` is on your `PATH`:
+
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
