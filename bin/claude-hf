@@ -76,6 +76,8 @@ CLAUDE_HF_PINNED_VERSION="${CLAUDE_HF_PINNED_VERSION:-}"
 # - on: force compatibility mode
 # - off: disable compatibility mode
 CLAUDE_HF_COMPAT_422_MODE="${CLAUDE_HF_COMPAT_422_MODE:-auto}"
+# Default session permission mode. Set to acceptEdits/default/dontAsk/plan if needed.
+CLAUDE_HF_PERMISSION_MODE="${CLAUDE_HF_PERMISSION_MODE:-bypassPermissions}"
 CLAUDE_ARGS=()
 CLAUDE_BIN=""
 CLAUDE_VERSION=""
@@ -171,9 +173,22 @@ resolve_hf_compat_mode() {
   fi
 }
 
+validate_permission_mode() {
+  case "${CLAUDE_HF_PERMISSION_MODE}" in
+    acceptEdits|auto|bypassPermissions|default|dontAsk|plan)
+      return 0
+      ;;
+    *)
+      echo "claude-hf: invalid CLAUDE_HF_PERMISSION_MODE='${CLAUDE_HF_PERMISSION_MODE}' (expected: acceptEdits|auto|bypassPermissions|default|dontAsk|plan)" >&2
+      exit 1
+      ;;
+  esac
+}
+
 resolve_claude_bin
 resolve_claude_version
 resolve_hf_compat_mode
+validate_permission_mode
 
 build_claude_args() {
   local default_model="$1"
@@ -209,9 +224,9 @@ build_claude_args() {
   fi
   if [[ "$has_permission_mode" -eq 0 ]]; then
     if [[ ${#CLAUDE_ARGS[@]} -gt 0 ]]; then
-      CLAUDE_ARGS=(--permission-mode dontAsk "${CLAUDE_ARGS[@]}")
+      CLAUDE_ARGS=(--permission-mode "${CLAUDE_HF_PERMISSION_MODE}" "${CLAUDE_ARGS[@]}")
     else
-      CLAUDE_ARGS=(--permission-mode dontAsk)
+      CLAUDE_ARGS=(--permission-mode "${CLAUDE_HF_PERMISSION_MODE}")
     fi
   fi
   if [[ "$has_effort" -eq 0 ]]; then

@@ -39,8 +39,9 @@ Convenience launcher modes:
 
 Default permission behavior:
 
-- `claude-hf` now defaults to `--permission-mode dontAsk`.
-- You can override it per run with `--permission-mode default` or `--permission-mode plan`.
+- `claude-hf` now defaults to `--permission-mode bypassPermissions` (full access).
+- You can override it per run with `--permission-mode ...`, or globally via:
+  `CLAUDE_HF_PERMISSION_MODE=acceptEdits` (or `dontAsk`, `default`, `plan`).
 
 ## Model Slots
 
